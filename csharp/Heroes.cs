@@ -3,7 +3,10 @@ using LanguageExt;
 using static GameConfig;
 
 [Closed(typeof(Warrior), typeof(Archer), typeof(Cleric))]
-public abstract record Hero(Player player, Gold cost, Damage damage, HP hp, Range range);
+public abstract record Hero(Player player, Gold cost, Damage damage, HP hp, Range range) {
+    public virtual bool Equals(Hero? other) => ReferenceEquals(this, other);
+}
+
 
 public record Warrior(Player player, Gold cost, Damage damage, HP hp, Range range)
     : Hero(player, cost, damage, hp, range);
@@ -33,18 +36,21 @@ public static class HeroExts {
             Warrior warrior => warrior.player == Player.Player1 ? ']' : '[',
             _ => throw ExhaustiveMatch.Failed(hero)
         };
-    
-    public static Option<Hero> GetHeroByPrice(Gold goldToSpend, Player player) =>
-        goldToSpend.value switch {
-            var cost when cost >= ClericCost.value =>
-                new Cleric(player, ClericCost, ClericDamage, ClericHP, ClericRange, new Cooldown(0)),
-            var cost when cost >= ArcherCost.value =>
-                new Archer(player, ArcherCost, ArcherDamage, ArcherHP, ArcherRange),
-            var cost when cost >= WarriorCost.value =>
-                new Warrior(player, WarriorCost, WarriorDamage, WarriorHP, WarriorRange),
-            _ => Option<Hero>.None
+
+    public static Option<Hero> GetHeroByPrice(Gold goldToSpend, Player player, Random rng) =>
+        rng.Next(4) switch {
+            0 => goldToSpend.value >= ClericCost.value
+                ? new Cleric(player, ClericCost, ClericDamage, ClericHP, ClericRange, new Cooldown(0))
+                : Option<Hero>.None,
+            1 => goldToSpend.value >= ArcherCost.value
+                ? new Archer(player, ArcherCost, ArcherDamage, ArcherHP, ArcherRange)
+                : Option<Hero>.None,
+            2 => goldToSpend.value >= WarriorCost.value
+                ? new Warrior(player, WarriorCost, WarriorDamage, WarriorHP, WarriorRange)
+                : Option<Hero>.None,
+            _ => Option<Hero>.None,
         };
-    
+
     public static Gold GetGoldReward(this Hero hero) =>
         new Gold((int)Math.Floor(hero.cost.value * KillGoldPercentage));
 }

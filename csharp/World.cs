@@ -6,6 +6,14 @@ using static GameConfig;
 public record World(Castle castle1, Castle castle2, Arr<Option<Hero>> field, Player currentPlayer);
 
 public static class WorldExts {
+    public static World Create() =>
+        new World(
+            new Castle(CastleHP, StartingGold),
+            new Castle(CastleHP, StartingGold),
+            Enumerable.Repeat(Option<Hero>.None, WorldSize).ToArr(),
+            Player.Player1
+        );
+
     public static World AdvanceHeroes(this World world) {
         var linedUpWorld = world.currentPlayer == Player.Player1 ? world : world with { field = world.field.Reverse() };
 
@@ -34,8 +42,8 @@ public static class WorldExts {
     public static World HealOrAttackOrMove(this World world, Cleric cleric) =>
         FindLowestHpFriendlyHeroIndex(world.field, cleric)
             .Match(
-                heroIdx => FindHeroIndex(world.field, cleric).Match(
-                    clericIdx => GetHeroAtPosition(world.field, heroIdx).Match(
+                heroIdx => world.field.IndexOfOpt(cleric).Match(
+                    clericIdx => world.field.ElementAtOrDefault(heroIdx).Match(
                         hero => {
                             var newHp = new HP(Math.Min(hero.hp.value + HealAmount.value, MaxUnitHP.value));
                             var healedHero = hero with { hp = newHp };
@@ -65,7 +73,7 @@ public static class WorldExts {
     }
 
     public static bool CanAttackCastle(World world, Hero hero) =>
-        FindHeroIndex(world.field, hero)
+        world.field.IndexOfOpt(hero)
             .Match(
                 idx => hero.range.value + idx >= world.field.Length,
                 () => throw new Exception("Hero is not on field")
@@ -73,7 +81,7 @@ public static class WorldExts {
 
     public static Option<World> TryAttack(this World world, Hero attacker) =>
         FindLowestHpEnemyIndex(world.field, attacker).Match(
-            defenderIdx => GetHeroAtPosition(world.field, defenderIdx).Match(
+            defenderIdx => world.field.ElementAtOrDefault(defenderIdx).Match(
                 defender => world with {
                     field = world.field.SetItem(
                         defenderIdx, defender with { hp = defender.hp.DoDamage(attacker.damage) }
@@ -99,7 +107,7 @@ public static class WorldExts {
     }
 
     public static World MoveOrDoNothing(this World world, Hero hero) =>
-        FindHeroIndex(world.field, hero).Match(
+        world.field.IndexOfOpt(hero).Match(
             heroIdx => {
                 if (heroIdx == world.field.Length - 1) {
                     return world;
@@ -112,12 +120,12 @@ public static class WorldExts {
                         }
 
                         if (nextHero.hp.value < hero.hp.value) {
-                            return world with { field = SwapSlots(world.field, heroIdx, heroIdx + 1) };
+                            return world with { field = world.field.SwapElements(heroIdx, heroIdx + 1)};
                         }
 
                         return world;
                     },
-                    () => world with { field = SwapSlots(world.field, heroIdx, heroIdx + 1) }
+                    () => world with { field = world.field.SwapElements(heroIdx, heroIdx + 1) }
                 );
             },
             () => throw new Exception("Hero is not on field")
@@ -180,10 +188,10 @@ public static class WorldExts {
         return world with { currentPlayer = opponent };
     }
     
-    public static World SpawnNewHero(this World world) {
+    public static World SpawnNewHero(this World world, Random rng) {
         var currentPlayer = world.currentPlayer;
         var castle = currentPlayer == Player.Player1 ? world.castle1 : world.castle2;
-        var newHeroOpt = HeroExts.GetHeroByPrice(castle.gold, world.currentPlayer);
+        var newHeroOpt = HeroExts.GetHeroByPrice(castle.gold, world.currentPlayer, rng);
 
         return newHeroOpt.Match(
             newHero => AddHeroToField(world.field, newHero, currentPlayer)
@@ -202,25 +210,18 @@ public static class WorldExts {
             () => world
         );
     }
-    
-    public static Option<int> FindHeroIndex(Arr<Option<Hero>> field, Hero hero) =>
-        field
-            .Select((heroOpt, idx) => (heroOpt, idx))
-            .Where(tpl => tpl.heroOpt.Match(h => ReferenceEquals(h, hero), () => false))
-            .Select(tpl => tpl.idx)
-            .HeadOrNone();
-    
+
     public static Option<int> FindLowestHpFriendlyHeroIndex(Arr<Option<Hero>> field, Hero currentHero) =>
         field
             .SelectMany(x => x)
             .Where(h => h.player == currentHero.player && !ReferenceEquals(h, currentHero))
             .OrderBy(h => h.hp.value)
             .HeadOrNone()
-            .Map(h => FindHeroIndex(field, h))
+            .Map(h => field.IndexOfOpt(h))
             .Flatten();
     
     public static Option<int> FindLowestHpEnemyIndex(Arr<Option<Hero>> field, Hero attacker) =>
-        FindHeroIndex(field, attacker)
+        field.IndexOfOpt(attacker)
             .Match(
                 idx => field
                     .Skip(idx + 1)
@@ -229,21 +230,10 @@ public static class WorldExts {
                     .Where(h => h.player != attacker.player)
                     .OrderBy(h => h.hp.value)
                     .HeadOrNone()
-                    .Map(h => FindHeroIndex(field, h))
+                    .Map(h => field.IndexOfOpt(h))
                     .Flatten(),
                 () => Option<int>.None
             );
-    
-    public static Option<Hero> GetHeroAtPosition(Arr<Option<Hero>> field, int position) =>
-        position >= 0 && position < field.Count
-            ? field[position]
-            : Option<Hero>.None;
-    
-    public static Arr<Option<Hero>> SwapSlots(Arr<Option<Hero>> array, int idx1, int idx2) {
-        var item1 = array[idx1];
-        var item2 = array[idx2];
-        return array.SetItem(idx1, item2).SetItem(idx2, item1);
-    }
 
     private static Option<Arr<Option<Hero>>> AddHeroToField(Arr<Option<Hero>> field, Hero newHero, Player player) {
         var fieldUntilFirstEnemy = field

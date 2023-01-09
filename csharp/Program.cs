@@ -1,28 +1,19 @@
 ﻿using LanguageExt;
-using static GameConfig;
 using static LanguageExt.Prelude;
 
-World PlayTurn(World world) =>
+World PlayTurn(World world, Random rng) =>
     world
         .ReduceCooldowns()
-        .SpawnNewHero()
+        .SpawnNewHero(rng)
         .AdvanceHeroes()
         .ApplyGoldRewards()
         .RemoveDeadHeroes()
         .ChangeTurnPlayer();
 
 var program =
-    Eff(() => {
-        var newWorld = new World(
-            new Castle(CastleHP, StartingGold),
-            new Castle(CastleHP, StartingGold),
-            Enumerable.Repeat(Option<Hero>.None, WorldSize).ToArr(),
-            Player.Player1
-        );
-        
-        return new WorldEnumerator(newWorld, PlayTurn);
-    }
-);
+    from rng in Eff(() => new Random())
+    let newWorld = WorldExts.Create()
+    select new WorldEnumerator(newWorld, w => PlayTurn(w, rng));
 
 program
     .Map(result => result.Select(world => world.ToVisual()))
