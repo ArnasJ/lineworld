@@ -56,7 +56,7 @@ public static class WorldExts {
                         },
                         () => throw new Exception("Impossible!")
                     ),
-                    () => throw new Exception("Cleric is not on the field")
+                    () => throw new Exception($"Hero {cleric} is not on the field")
                 ),
                 () => world.AttackOrMove(cleric));
     
@@ -76,7 +76,7 @@ public static class WorldExts {
         world.field.IndexOfOpt(hero)
             .Match(
                 idx => hero.range.value + idx >= world.field.Length,
-                () => throw new Exception("Hero is not on field")
+                () => throw new Exception($"Hero {hero} is not on field")
             );
 
     public static Option<World> TryAttack(this World world, Hero attacker) =>
@@ -128,7 +128,7 @@ public static class WorldExts {
                     () => world with { field = world.field.SwapElements(heroIdx, heroIdx + 1) }
                 );
             },
-            () => throw new Exception("Hero is not on field")
+            () => throw new Exception($"Hero {hero} is not on field")
         );
     
     public static World ApplyGoldRewards(this World world) {
@@ -173,7 +173,7 @@ public static class WorldExts {
             .Map(heroOpt => heroOpt.Match(
                 hero => hero.player == Player.Player1
                     ? hero switch {
-                        Cleric cleric => cleric with { cooldown = new Cooldown(cleric.cooldown.turns - 1) },
+                        Cleric cleric => cleric with { cooldown = new Cooldown(Math.Max(0, cleric.cooldown.turns - 1)) },
                         _ => heroOpt
                     }
                     : heroOpt,
@@ -216,8 +216,7 @@ public static class WorldExts {
             .Where(h => h.player == currentHero.player && !ReferenceEquals(h, currentHero))
             .OrderBy(h => h.hp.value)
             .HeadOrNone()
-            .Map(h => field.IndexOfOpt(h))
-            .Flatten();
+            .Bind<int>(h => field.IndexOf(h));
     
     public static Option<int> FindLowestHpEnemyIndex(Arr<Option<Hero>> field, Hero attacker) =>
         field.IndexOfOpt(attacker)
@@ -229,9 +228,8 @@ public static class WorldExts {
                     .Where(h => h.player != attacker.player)
                     .OrderBy(h => h.hp.value)
                     .HeadOrNone()
-                    .Map(h => field.IndexOfOpt(h))
-                    .Flatten(),
-                () => Option<int>.None
+                    .Bind(h => field.IndexOfOpt(h)),
+                () => throw new Exception($"Hero {attacker} is not on field")
             );
 
     private static Option<Arr<Option<Hero>>> AddHeroToField(Arr<Option<Hero>> field, Hero newHero, Player player) {
@@ -271,7 +269,7 @@ public static class WorldExts {
         var sb = new StringBuilder();
         sb.Append(string.Concat(world.field.Map(heroOpt => heroOpt.Match(h => h.GetIndicator(), () => '.'))));
 
-        if (world.castle1.hp.value <= 0 || world.castle2.hp.value <= 0) {
+        if (world.IsGameFinished()) {
             var result = $"Game End: Player1: {world.castle1.hp.value}, Player2: {world.castle2.hp.value}";
             sb.Append('\n');
             sb.Append(result);
