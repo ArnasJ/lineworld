@@ -1,23 +1,37 @@
 ﻿using LanguageExt;
+using static HeroExts;
 using static LanguageExt.Prelude;
 
-World PlayTurn(World world, Random rng) =>
-    world
-        .ReduceCooldowns()
-        .SpawnNewHero(rng)
+Eff<World> PlayTurnEff(World world, Random rng) =>
+    GetHeroByPrice(world.CurrentPlayerGold(), world.currentPlayer, rng)
+        .Map(newHeroOpt => PlayTurn(world, newHeroOpt));
+
+
+World PlayTurn(World world, Option<Hero> newHeroOpt) =>
+    world.ReduceCooldowns()
+        .SpawnNewHero(newHeroOpt)
         .AdvanceHeroes()
         .ApplyGoldRewards()
         .RemoveDeadHeroes()
         .ChangeTurnPlayer();
 
+Eff<World> PlayGame(World world, Random rng) =>
+    PlayTurnEff(world, rng)
+        .Bind(newWorld =>
+            newWorld.IsGameFinished()
+                ? SuccessEff(newWorld)
+                : PlayGame(newWorld, rng)
+        );
+
 var program =
     from rng in Eff(() => new Random())
-    let newWorld = WorldExts.Create()
-    select new WorldEnumerator(newWorld, w => PlayTurn(w, rng));
+    let startingWorld = WorldExts.Create()
+    from newWorld in PlayGame(startingWorld, rng)
+    select newWorld;
 
 program
-    .Map(result => result.Select(world => world.ToVisual()))
-    .Bind(WriteLineEnumerableEff)
+    .Map(world => world.ToVisual())
+    .Bind(WriteLineEff)
     .Run()
     .Match(
         Succ: _ => { },
@@ -27,11 +41,8 @@ program
         }
     );
 
-Eff<Unit> WriteLineEnumerableEff(IEnumerable<string> str) =>
+Eff<Unit> WriteLineEff(string str) =>
     Eff(() => {
-        foreach (var s1 in str) {
-           Console.WriteLine(s1); 
-        }
-        
+        Console.WriteLine(str);
         return Unit.Default;
     });

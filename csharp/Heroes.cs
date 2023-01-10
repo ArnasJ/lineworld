@@ -1,5 +1,6 @@
 ﻿using ExhaustiveMatching;
 using LanguageExt;
+using static LanguageExt.Prelude;
 using static GameConfig;
 
 [Closed(typeof(Warrior), typeof(Archer), typeof(Cleric))]
@@ -37,19 +38,21 @@ public static class HeroExts {
             _ => throw ExhaustiveMatch.Failed(hero)
         };
 
-    public static Option<Hero> GetHeroByPrice(Gold goldToSpend, Player player, Random rng) =>
-        rng.Next(4) switch {
-            0 => goldToSpend.value >= ClericCost.value
-                ? new Cleric(player, ClericCost, ClericDamage, ClericHP, ClericRange, new Cooldown(0))
-                : Option<Hero>.None,
-            1 => goldToSpend.value >= ArcherCost.value
-                ? new Archer(player, ArcherCost, ArcherDamage, ArcherHP, ArcherRange)
-                : Option<Hero>.None,
-            2 => goldToSpend.value >= WarriorCost.value
-                ? new Warrior(player, WarriorCost, WarriorDamage, WarriorHP, WarriorRange)
-                : Option<Hero>.None,
-            _ => Option<Hero>.None,
-        };
+    public static Eff<Option<Hero>> GetHeroByPrice(Gold goldToSpend, Player player, Random rng) =>
+        Eff(() => 
+            rng.Next(4) switch {
+                0 => goldToSpend.value >= ClericCost.value
+                    ? new Cleric(player, ClericCost, ClericDamage, ClericHP, ClericRange, new Cooldown(0))
+                    : Option<Hero>.None,
+                1 => goldToSpend.value >= ArcherCost.value
+                    ? new Archer(player, ArcherCost, ArcherDamage, ArcherHP, ArcherRange)
+                    : Option<Hero>.None,
+                2 => goldToSpend.value >= WarriorCost.value
+                    ? new Warrior(player, WarriorCost, WarriorDamage, WarriorHP, WarriorRange)
+                    : Option<Hero>.None,
+                _ => Option<Hero>.None,
+            }
+        );
 
     public static Gold GetGoldReward(this Hero hero) =>
         new Gold((int)Math.Floor(hero.cost.value * KillGoldPercentage));

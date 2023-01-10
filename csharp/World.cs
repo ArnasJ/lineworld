@@ -188,10 +188,9 @@ public static class WorldExts {
         return world with { currentPlayer = opponent };
     }
     
-    public static World SpawnNewHero(this World world, Random rng) {
+    public static World SpawnNewHero(this World world, Option<Hero> newHeroOpt) {
         var currentPlayer = world.currentPlayer;
         var castle = currentPlayer == Player.Player1 ? world.castle1 : world.castle2;
-        var newHeroOpt = HeroExts.GetHeroByPrice(castle.gold, world.currentPlayer, rng);
 
         return newHeroOpt.Match(
             newHero => AddHeroToField(world.field, newHero, currentPlayer)
@@ -259,6 +258,14 @@ public static class WorldExts {
                 .ToArr()
                 .ToSome();
     }
+
+    public static Gold CurrentPlayerGold(this World world) =>
+        world.currentPlayer == Player.Player1
+            ? world.castle1.gold
+            : world.castle2.gold;
+
+    public static bool IsGameFinished(this World world) =>
+        world.castle1.hp.value <= 0 || world.castle2.hp.value <= 0;
     
     public static string ToVisual(this World world) {
         var sb = new StringBuilder();
