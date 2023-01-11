@@ -3,9 +3,7 @@ using LanguageExt;
 using LanguageExt.SomeHelp;
 using static GameConfig;
 
-public record World(Castle castle1, Castle castle2, Arr<Option<Hero>> field, Player currentPlayer);
-
-public static class WorldExts {
+public record World(Castle castle1, Castle castle2, Arr<Option<Hero>> field, Player currentPlayer) {
     public static World Create() =>
         new World(
             new Castle(CastleHP, StartingGold),
@@ -14,20 +12,20 @@ public static class WorldExts {
             Player.Player1
         );
 
-    public static World AdvanceHeroes(this World world) {
-        var linedUpWorld = world.currentPlayer == Player.Player1 ? world : world with { field = world.field.Reverse() };
+    public World AdvanceHeroes() {
+        var linedUpWorld = currentPlayer == Player.Player1 ? this : this with { field = field.Reverse() };
 
         var updatedWorld = linedUpWorld.field
-            .Select((_, i) => i)
-            .FoldBack(linedUpWorld, (currentWorld, index) =>
-                currentWorld.field[index].Match(
-                    hero => hero.player == world.currentPlayer
+            .Select((heroOpt, i) => (heroOpt, i))
+            .FoldBack(linedUpWorld, (currentWorld, tpl) =>
+                currentWorld.field[tpl.i].Match(
+                    hero => hero.player == currentPlayer
                         ? hero switch {
                             Cleric cleric => cleric.cooldown.turns switch {
-                                0 => currentWorld.HealOrAttackOrMove(cleric),
-                                _ => currentWorld.AttackOrMove(cleric)
+                                0 => currentWorld.HealOrAttackOrMove(cleric, tpl.i),
+                                _ => currentWorld.AttackOrMove(cleric, tpl.i)
                             },
-                            _ => currentWorld.AttackOrMove(hero)
+                            _ => currentWorld.AttackOrMove(hero, tpl.i)
                         }
                         : currentWorld,
                     () => currentWorld
@@ -38,52 +36,46 @@ public static class WorldExts {
             ? updatedWorld
             : updatedWorld with { field = updatedWorld.field.Reverse() };
     }
-    
-    public static World HealOrAttackOrMove(this World world, Cleric cleric) =>
-        FindLowestHpFriendlyHeroIndex(world.field, cleric)
-            .Match(
-                heroIdx => world.field.IndexOfOpt(cleric).Match(
-                    clericIdx => world.field.ElementAtOrDefault(heroIdx).Match(
-                        hero => {
-                            var newHp = new HP(Math.Min(hero.hp.value + HealAmount.value, MaxUnitHP.value));
-                            var healedHero = hero with { hp = newHp };
-                            var clericWithCd = cleric with { cooldown = HealingCooldown };
-                            var updatedField = world.field
-                                .SetItem(heroIdx, healedHero.ToSome())
-                                .SetItem(clericIdx, clericWithCd.ToSome<Hero>());
 
-                            return world with { field = updatedField };
-                        },
-                        () => throw new Exception("Impossible!")
-                    ),
-                    () => throw new Exception($"Hero {cleric} is not on the field")
+    public World HealOrAttackOrMove(Cleric cleric, int clericIdx) =>
+        FindLowestHpFriendlyHeroIndex(clericIdx)
+            .Match(
+                heroToHealIdx => field.ElementAtOrDefault(heroToHealIdx).Match(
+                    heroToHeal => {
+                        var newHp = new HP(Math.Min(heroToHeal.hp.value + HealAmount.value, MaxUnitHP.value));
+                        var healedHero = heroToHeal with { hp = newHp };
+                        var clericWithCd = cleric with { cooldown = HealingCooldown };
+                        var updatedField = field
+                            .SetItem(heroToHealIdx, healedHero.ToSome())
+                            .SetItem(clericIdx, clericWithCd.ToSome<Hero>());
+
+                        return this with { field = updatedField };
+                    },
+                    () => throw new Exception("Impossible!")
                 ),
-                () => world.AttackOrMove(cleric));
-    
-    private static World AttackOrMove(this World world, Hero hero) {
-        if (CanAttackCastle(world, hero)) {
-            return DoCastleDamage(world, hero.damage);
+                () => AttackOrMove(cleric, clericIdx)
+            );
+
+    private World AttackOrMove(Hero attacker, int attackerIdx) {
+        if (CanAttackCastle(attacker.range, attackerIdx)) {
+            return DoCastleDamage(attacker.damage);
         }
 
-        return world.TryAttack(hero)
+        return TryAttack(attacker, attackerIdx)
             .Match(
                 updatedWorld => updatedWorld,
-                () => world.MoveOrDoNothing(hero)
+                () => MoveOrDoNothing(attacker, attackerIdx)
             );
     }
 
-    public static bool CanAttackCastle(World world, Hero hero) =>
-        world.field.IndexOfOpt(hero)
-            .Match(
-                idx => hero.range.value + idx >= world.field.Length,
-                () => throw new Exception($"Hero {hero} is not on field")
-            );
+    public bool CanAttackCastle(Range attackRange, int attackerIdx) =>
+        attackRange.value + attackerIdx >= field.Length;
 
-    public static Option<World> TryAttack(this World world, Hero attacker) =>
-        FindLowestHpEnemyIndex(world.field, attacker).Match(
-            defenderIdx => world.field.ElementAtOrDefault(defenderIdx).Match(
-                defender => world with {
-                    field = world.field.SetItem(
+    public Option<World> TryAttack(Hero attacker, int attackerIdx) =>
+        FindLowestHpEnemyIndex(attacker.range, attackerIdx).Match(
+            defenderIdx => field.ElementAtOrDefault(defenderIdx).Match(
+                defender => this with {
+                    field = field.SetItem(
                         defenderIdx, defender with { hp = defender.hp.DoDamage(attacker.damage) }
                     )
                 },
@@ -91,52 +83,48 @@ public static class WorldExts {
             ),
             () => Option<World>.None
         );
-    
-    public static World DoCastleDamage(this World world, Damage damage) {
-        var castle1 =
-            world.currentPlayer == Player.Player1
-                ? world.castle1
-                : world.castle1 with { hp = new HP(world.castle1.hp.value - damage.value) };
-    
-        var castle2 =
-            world.currentPlayer == Player.Player2
-                ? world.castle2
-                : world.castle2 with { hp = new HP(world.castle2.hp.value - damage.value) };
 
-        return world with { castle1 = castle1, castle2 = castle2 };
+    public World DoCastleDamage(Damage damage) {
+        var p1 =
+            currentPlayer == Player.Player1
+                ? castle1
+                : castle1 with { hp = new HP(castle1.hp.value - damage.value) };
+    
+        var p2 =
+            currentPlayer == Player.Player2
+                ? castle2
+                : castle2 with { hp = new HP(castle2.hp.value - damage.value) };
+
+        return this with { castle1 = p1, castle2 = p2 };
     }
 
-    public static World MoveOrDoNothing(this World world, Hero hero) =>
-        world.field.IndexOfOpt(hero).Match(
-            heroIdx => {
-                if (heroIdx == world.field.Length - 1) {
-                    return world;
+    public World MoveOrDoNothing(Hero hero, int heroIdx) {
+        if (heroIdx == field.Length - 1) {
+            return this;
+        }
+
+        return field[heroIdx + 1].Match(
+            nextHero => {
+                if (nextHero.player != hero.player) {
+                    return this;
                 }
 
-                return world.field[heroIdx + 1].Match(
-                    nextHero => {
-                        if (nextHero.player != hero.player) {
-                            return world;
-                        }
+                if (nextHero.hp.value < hero.hp.value) {
+                    return this with { field = field.SwapElements(heroIdx, heroIdx + 1)};
+                }
 
-                        if (nextHero.hp.value < hero.hp.value) {
-                            return world with { field = world.field.SwapElements(heroIdx, heroIdx + 1)};
-                        }
-
-                        return world;
-                    },
-                    () => world with { field = world.field.SwapElements(heroIdx, heroIdx + 1) }
-                );
+                return this;
             },
-            () => throw new Exception($"Hero {hero} is not on field")
+            () => this with { field = field.SwapElements(heroIdx, heroIdx + 1) }
         );
-    
-    public static World ApplyGoldRewards(this World world) {
+    }
+
+    public World ApplyGoldRewards() {
         var goldForKills =
-            world.field.Fold(
+            field.Fold(
                 new Gold(0), (currentGold, heroOpt) => heroOpt.Match(
                     hero => {
-                        var goldReward = hero.player != world.currentPlayer && hero.hp.value <= 0
+                        var goldReward = hero.player != currentPlayer && hero.hp.value <= 0
                             ? hero.GetGoldReward()
                             : new Gold(0);
 
@@ -146,30 +134,30 @@ public static class WorldExts {
                 )
             );
     
-        var p1 = world.currentPlayer == Player.Player1
-            ? world.castle1 with { gold = Gold.Min(GoldLimit, world.castle1.gold + goldForKills + GoldPerTurn) }
-            : world.castle1;
+        var p1 = currentPlayer == Player.Player1
+            ? castle1 with { gold = Gold.Min(GoldLimit, castle1.gold + goldForKills + GoldPerTurn) }
+            : castle1;
 
-        var p2 = world.currentPlayer == Player.Player2
-            ? world.castle2 with { gold = Gold.Min(GoldLimit, world.castle2.gold + goldForKills + GoldPerTurn) }
-            : world.castle2;
+        var p2 = currentPlayer == Player.Player2
+            ? castle2 with { gold = Gold.Min(GoldLimit, castle2.gold + goldForKills + GoldPerTurn) }
+            : castle2;
 
-        return world with { castle1 = p1, castle2 = p2 };
+        return this with { castle1 = p1, castle2 = p2 };
     }
-    
-    public static World RemoveDeadHeroes(this World world) {
-        var updatedField = world.field
+
+    public World RemoveDeadHeroes() {
+        var updatedField = field
             .Map(heroOpt =>
-                heroOpt.Exists(h => h.player != world.currentPlayer && h.hp.value <= 0)
+                heroOpt.Exists(h => h.player != currentPlayer && h.hp.value <= 0)
                     ? Option<Hero>.None
                     : heroOpt
             );
 
-        return world with { field = updatedField };
+        return this with { field = updatedField };
     }
 
-    public static World ReduceCooldowns(this World world) {
-        var updatedField = world.field
+    public World ReduceCooldowns() {
+        var updatedField = field
             .Map(heroOpt => heroOpt.Match(
                 hero => hero.player == Player.Player1
                     ? hero switch {
@@ -180,59 +168,55 @@ public static class WorldExts {
                 () => heroOpt
             ));
     
-        return world with { field = updatedField };
+        return this with { field = updatedField };
     }
 
-    public static World ChangeTurnPlayer(this World world) {
-        var opponent = world.currentPlayer == Player.Player1 ? Player.Player2 : Player.Player1;
-        return world with { currentPlayer = opponent };
+    public World ChangeTurnPlayer() {
+        var opponent = currentPlayer == Player.Player1 ? Player.Player2 : Player.Player1;
+        return this with { currentPlayer = opponent };
     }
-    
-    public static World SpawnNewHero(this World world, Option<Hero> newHeroOpt) {
-        var currentPlayer = world.currentPlayer;
-        var castle = currentPlayer == Player.Player1 ? world.castle1 : world.castle2;
+
+    public World SpawnNewHero(Option<Hero> newHeroOpt) {
+        var castle = currentPlayer == Player.Player1 ? castle1 : castle2;
 
         return newHeroOpt.Match(
-            newHero => AddHeroToField(world.field, newHero, currentPlayer)
+            newHero => AddHeroToField(newHero, currentPlayer)
                 .Match(
                     fieldWithNewHero => {
                         var newCastle = castle with { gold = castle.gold - newHero.cost };
-                        var p1Castle = currentPlayer == Player.Player1 ? newCastle : world.castle1;
-                        var p2Castle = currentPlayer == Player.Player2 ? newCastle : world.castle2;
+                        var p1Castle = currentPlayer == Player.Player1 ? newCastle : castle1;
+                        var p2Castle = currentPlayer == Player.Player2 ? newCastle : castle2;
 
                         return currentPlayer == Player.Player1
-                            ? world with { castle1 = p1Castle, field = fieldWithNewHero }
-                            : world with { castle2 = p2Castle, field = fieldWithNewHero };
+                            ? this with { castle1 = p1Castle, field = fieldWithNewHero }
+                            : this with { castle2 = p2Castle, field = fieldWithNewHero };
                     },
-                    () => world
+                    () => this
                 ),
-            () => world
+            () => this
         );
     }
 
-    public static Option<int> FindLowestHpFriendlyHeroIndex(Arr<Option<Hero>> field, Hero currentHero) =>
+    public Option<int> FindLowestHpFriendlyHeroIndex(int currentHeroIdx) =>
         field
-            .SelectMany(x => x)
-            .Where(h => h.player == currentHero.player && !ReferenceEquals(h, currentHero))
+            .Select((opt, i) => (opt, i))
+            .Where(tpl => tpl.opt.Match(h => h.player == currentPlayer && tpl.i != currentHeroIdx, () => false))
+            .Bind(tpl => tpl.opt)
             .OrderBy(h => h.hp.value)
             .HeadOrNone()
-            .Bind<int>(h => field.IndexOf(h));
-    
-    public static Option<int> FindLowestHpEnemyIndex(Arr<Option<Hero>> field, Hero attacker) =>
-        field.IndexOfOpt(attacker)
-            .Match(
-                idx => field
-                    .Skip(idx + 1)
-                    .Take(attacker.range.value)
-                    .SelectMany(x => x)
-                    .Where(h => h.player != attacker.player)
-                    .OrderBy(h => h.hp.value)
-                    .HeadOrNone()
-                    .Bind(h => field.IndexOfOpt(h)),
-                () => throw new Exception($"Hero {attacker} is not on field")
-            );
+            .Bind(h => field.IndexOfOpt(h));
 
-    private static Option<Arr<Option<Hero>>> AddHeroToField(Arr<Option<Hero>> field, Hero newHero, Player player) {
+    public Option<int> FindLowestHpEnemyIndex(Range attackRange, int attackerIdx) =>
+        field
+            .Skip(attackerIdx + 1)
+            .Take(attackRange.value)
+            .SelectMany(x => x)
+            .Where(h => h.player != currentPlayer)
+            .OrderBy(h => h.hp.value)
+            .HeadOrNone()
+            .Bind(h => field.IndexOfOpt(h));
+
+    private Option<Arr<Option<Hero>>> AddHeroToField(Hero newHero, Player player) {
         var fieldUntilFirstEnemy = field
             .TakeWhile(heroOpt => heroOpt.Match(
                 hero => hero.player == player,
@@ -257,20 +241,20 @@ public static class WorldExts {
                 .ToSome();
     }
 
-    public static Gold CurrentPlayerGold(this World world) =>
-        world.currentPlayer == Player.Player1
-            ? world.castle1.gold
-            : world.castle2.gold;
+    public Gold CurrentPlayerGold() =>
+        currentPlayer == Player.Player1
+            ? castle1.gold
+            : castle2.gold;
 
-    public static bool IsGameFinished(this World world) =>
-        world.castle1.hp.value <= 0 || world.castle2.hp.value <= 0;
-    
-    public static string ToVisual(this World world) {
+    public bool IsGameFinished() =>
+        castle1.hp.value <= 0 || castle2.hp.value <= 0;
+
+    public string ToVisual() {
         var sb = new StringBuilder();
-        sb.Append(string.Concat(world.field.Map(heroOpt => heroOpt.Match(h => h.GetIndicator(), () => '.'))));
+        sb.Append(string.Concat(field.Map(heroOpt => heroOpt.Match(h => h.GetIndicator(), () => '.'))));
 
-        if (world.IsGameFinished()) {
-            var result = $"Game End: Player1: {world.castle1.hp.value}, Player2: {world.castle2.hp.value}";
+        if (IsGameFinished()) {
+            var result = $"Game End: Player1: {castle1.hp.value}, Player2: {castle2.hp.value}";
             sb.Append('\n');
             sb.Append(result);
         }

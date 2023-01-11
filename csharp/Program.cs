@@ -1,4 +1,5 @@
-﻿using LanguageExt;
+﻿using System.Collections.Immutable;
+using LanguageExt;
 using static HeroExts;
 using static LanguageExt.Prelude;
 
@@ -15,23 +16,27 @@ World PlayTurn(World world, Option<Hero> newHeroOpt) =>
         .RemoveDeadHeroes()
         .ChangeTurnPlayer();
 
-Eff<World> PlayGame(World world, Random rng) =>
-    PlayTurnEff(world, rng)
-        .Bind(newWorld =>
-            newWorld.IsGameFinished()
-                ? SuccessEff(newWorld)
-                : PlayGame(newWorld, rng)
+Eff<ImmutableList<World>> PlayGame(World world, Random rng) {
+    return rec(world, ImmutableList<World>.Empty.Add(world));
+
+    Eff<ImmutableList<World>> rec(World current, ImmutableList<World> previous) =>
+        PlayTurnEff(current, rng).Bind(
+            newWorld => {
+                var newWorlds = previous.Add(newWorld);
+                return newWorld.IsGameFinished() ? SuccessEff(newWorlds) : rec(newWorld, newWorlds);
+            }
         );
+}
 
 var program =
     from rng in Eff(() => new Random())
-    let startingWorld = WorldExts.Create()
+    let startingWorld = World.Create()
     from newWorld in PlayGame(startingWorld, rng)
     select newWorld;
 
 program
-    .Map(world => world.ToVisual())
-    .Bind(WriteLineEff)
+    .Map(world => world.Select(w => w.ToVisual()))
+    .Bind(WriteLineEnumerableEff)
     .Run()
     .Match(
         Succ: _ => { },
@@ -41,8 +46,11 @@ program
         }
     );
 
-Eff<Unit> WriteLineEff(string str) =>
+Eff<Unit> WriteLineEnumerableEff(IEnumerable<string> str) =>
     Eff(() => {
-        Console.WriteLine(str);
+        foreach (var s1 in str) {
+            Console.WriteLine(s1); 
+        }
+        
         return Unit.Default;
     });
