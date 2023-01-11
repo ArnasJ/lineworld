@@ -4,10 +4,7 @@ using static LanguageExt.Prelude;
 using static GameConfig;
 
 [Closed(typeof(Warrior), typeof(Archer), typeof(Cleric))]
-public abstract record Hero(Player player, Gold cost, Damage damage, HP hp, Range range) {
-    public virtual bool Equals(Hero? other) => ReferenceEquals(this, other);
-}
-
+public abstract record Hero(Player player, Gold cost, Damage damage, HP hp, Range range);
 
 public record Warrior(Player player, Gold cost, Damage damage, HP hp, Range range)
     : Hero(player, cost, damage, hp, range);
