@@ -293,7 +293,7 @@ public record World(Castle castle1, Castle castle2, Arr<Option<Hero>> field, Pla
     /// </list>
     /// </summary>
     /// <returns>Some if spawned, None if not.</returns>
-    private Option<Arr<Option<Hero>>> AddHeroToField(Hero newHero, Arr<Option<Hero>> field) {
+    private Option<Arr<Option<Hero>>> AddHeroToField(Hero newHero) {
         var linedUpField = currentPlayer == Player.Player1 ? field : field.Reverse();
         
         var fieldUntilFirstEnemy = linedUpField
