@@ -35,18 +35,19 @@ public static class HeroExts {
             _ => throw ExhaustiveMatch.Failed(hero)
         };
 
+    /// <summary>
+    /// Randomly generates a new hero for the given player, if hero cost is below <see cref="goldToSpend"/>.
+    /// </summary>
+    /// <returns>Some if generated new hero, None if not.</returns>
     public static Eff<Option<Hero>> GetHeroByPrice(Gold goldToSpend, Player player, Random rng) =>
         Eff(() => 
             rng.Next(4) switch {
-                0 => goldToSpend.value >= ClericCost.value
-                    ? new Cleric(player, ClericCost, ClericDamage, ClericHP, ClericRange, new Cooldown(0))
-                    : Option<Hero>.None,
-                1 => goldToSpend.value >= ArcherCost.value
-                    ? new Archer(player, ArcherCost, ArcherDamage, ArcherHP, ArcherRange)
-                    : Option<Hero>.None,
-                2 => goldToSpend.value >= WarriorCost.value
-                    ? new Warrior(player, WarriorCost, WarriorDamage, WarriorHP, WarriorRange)
-                    : Option<Hero>.None,
+                0 when goldToSpend.value >= ClericCost.value => 
+                    new Cleric(player, ClericCost, ClericDamage, ClericHP, ClericRange, new Cooldown(0)),
+                1 when goldToSpend.value >= ArcherCost.value => 
+                    new Archer(player, ArcherCost, ArcherDamage, ArcherHP, ArcherRange),
+                2 when goldToSpend.value >= WarriorCost.value => 
+                    new Warrior(player, WarriorCost, WarriorDamage, WarriorHP, WarriorRange),
                 _ => Option<Hero>.None,
             }
         );

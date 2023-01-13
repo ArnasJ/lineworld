@@ -8,13 +8,19 @@ Eff<World> PlayTurnEff(World world, Random rng) =>
         .Map(newHeroOpt => PlayTurn(world, newHeroOpt));
 
 
-World PlayTurn(World world, Option<Hero> newHeroOpt) =>
-    world.ReduceCooldowns()
-        .SpawnNewHero(newHeroOpt)
+World PlayTurn(World world, Option<Hero> newHeroOpt) {
+    var worldAfterCooldown = world.ReduceHealingCooldown();
+    var worldAfterHeroSpawn = newHeroOpt.Match(hero =>
+        worldAfterCooldown.BuyNewHero(hero),
+        () => worldAfterCooldown
+    );
+    
+    return worldAfterHeroSpawn
         .AdvanceHeroes()
         .ApplyGoldRewards()
         .RemoveDeadHeroes()
         .ChangeTurnPlayer();
+}
 
 Eff<ImmutableList<World>> PlayGame(World world, Random rng) {
     return rec(world, ImmutableList<World>.Empty.Add(world));

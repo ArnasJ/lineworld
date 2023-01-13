@@ -5,8 +5,8 @@
     public static readonly Gold GoldLimit = new Gold(100);
     public static readonly float KillGoldPercentage = 0.2f;
 
-    public static int WorldSize = 30;
-    public static HP MaxUnitHP = new HP(9);
+    public static readonly int WorldSize = 30;
+    public static readonly HP MaxHeroHP = new HP(9);
 
     public static readonly Gold WarriorCost = new Gold(15);
     public static readonly Damage WarriorDamage = new Damage(4);
