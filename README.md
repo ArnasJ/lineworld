@@ -1,3 +1,5 @@
+# Line World console game simulation
+
 ```
 
   [Gold] P1: 15 / 100 | P2: 30 / 100
